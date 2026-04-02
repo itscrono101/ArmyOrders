@@ -1,0 +1,11 @@
+name: ArmyOrders
+version: 1.0.0
+main: com.armyorders.ArmyOrders
+api-version: '1.21'
+description: Military orders system
+author: Bot
+
+commands:
+  mo:
+    description: Army Orders main command
+    usage: /<command> [args]

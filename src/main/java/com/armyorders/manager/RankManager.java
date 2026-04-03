@@ -11,40 +11,56 @@ public class RankManager {
 
     private final ArmyOrders plugin;
 
-    private final Map<UUID, MilitaryPosition> playerPositions = new HashMap<>();
+    private final Map<UUID, MilitaryRole> playerRoles = new HashMap<>();
     private final Map<UUID, Long> serviceTime = new HashMap<>();
     private final Map<UUID, String> playerCountries = new HashMap<>();
 
-    public enum MilitaryPosition {
-        NONE("Host", "O", 0),
-        SOLDIER("Soldier", "V", 1),
-        OFFICER("Officer", "V", 2),
-        ARMY_LEADER("Army Leader", "S", 3);
+    // ===== MILITARY ROLE (DOLZHNOST) =====
+    public enum MilitaryRole {
+        NONE("Grazhdanskiy", "", 0, false),
+        PRIVATE_INFANTRY("Pekhotinets", "\u26A0", 1, false),
+        PRIVATE_MEDIC("Medik", "\u271A", 1, false),
+        PRIVATE_ENGINEER("Sapyor", "\u26CF", 1, false),
+        PRIVATE_SCOUT("Razvedchik", "\u263D", 1, false),
+        PLATOON_LEADER("Komandir vzVoda", "\u2691", 2, true),
+        STAFF_OFFICER("Shtabnyy ofitser", "\uD83D\uDCDD", 2, true),
+        ARMY_COMMANDER("Komanduyushchiy armiey", "\u269C", 3, true);
 
         private final String display;
         private final String icon;
         private final int level;
+        private final boolean officer;
 
-        MilitaryPosition(String display, String icon, int level) {
+        MilitaryRole(String display, String icon, int level, boolean officer) {
             this.display = display;
             this.icon = icon;
             this.level = level;
+            this.officer = officer;
         }
 
         public String getDisplay() { return display; }
         public String getIcon() { return icon; }
         public int getLevel() { return level; }
+        public boolean isOfficer() { return officer; }
+        public boolean isNone() { return this == NONE; }
+
+        public boolean canHaveWithRank(MilitaryRank rank) {
+            if (this == NONE) return true;
+            if (this.officer) return rank.getLevel() >= MilitaryRank.LIEUTENANT.getLevel();
+            return true;
+        }
     }
 
+    // ===== MILITARY RANK (ZVANIE) =====
     public enum MilitaryRank {
-        PRIVATE("Рядовой", "I", 0, 0),
-        CORPORAL("Ефрейтор", "II", 1, 3600),
-        SERGEANT("Сержант", "III", 2, 18000),
-        LIEUTENANT("Лейтенант", "IV", 3, 43200),
-        CAPTAIN("Капитан", "V", 4, 86400),
-        MAJOR("Майор", "VI", 5, 172800),
-        COLONEL("Полковник", "VII", 6, 345600),
-        COMMANDER_IN_CHIEF("Главнокомандующий", "★", 7, Long.MAX_VALUE);
+        PRIVATE("Ryadovyy", "I", 0, 0),
+        CORPORAL("Efreytor", "II", 1, 3600),
+        SERGEANT("Serzhant", "III", 2, 18000),
+        LIEUTENANT("Leytenant", "IV", 3, 43200),
+        CAPTAIN("Kapitan", "V", 4, 86400),
+        MAJOR("Mayor", "VI", 5, 172800),
+        COLONEL("Polkovnik", "VII", 6, 345600),
+        COMMANDER_IN_CHIEF("Glavnokomanduyushchiy", "\u2605", 7, Long.MAX_VALUE);
 
         private final String display;
         private final String icon;
@@ -64,19 +80,13 @@ public class RankManager {
         public long getSecondsRequired() { return secondsRequired; }
 
         public static MilitaryRank getNext(MilitaryRank current) {
-            MilitaryRank[] values = MilitaryRank.values();
-            int nextIndex = current.ordinal() + 1;
-            return nextIndex < values.length ? values[nextIndex] : null;
+            MilitaryRank[] v = values();
+            return current.ordinal() + 1 < v.length ? v[current.ordinal() + 1] : null;
         }
 
         public static MilitaryRank getByTime(long seconds) {
-            MilitaryRank[] values = MilitaryRank.values();
             MilitaryRank result = PRIVATE;
-            for (MilitaryRank rank : values) {
-                if (seconds >= rank.getSecondsRequired()) {
-                    result = rank;
-                }
-            }
+            for (MilitaryRank r : values()) { if (seconds >= r.getSecondsRequired()) result = r; }
             return result;
         }
     }
@@ -86,261 +96,165 @@ public class RankManager {
         loadData();
     }
 
-    // ─── СТРАНА ────────────────────────────────────────────────────────────
-
-    /**
-     * Получить страну игрока через CountryisLeaderPerms (reflection).
-     * Возвращает null если CLP не установлен или игрок не в стране.
-     */
+    // ===== STRANA =====
     public String getCountry(Player player) {
-        // Сначала проверяем кэш
         String cached = playerCountries.get(player.getUniqueId());
         if (cached != null) return cached;
 
-        // Если игрок — правитель (clp.leader) — он ARMYY_LEADER автоматически
         if (player.hasPermission("clp.leader")) {
-            String country = getCountryViaReflection(player);
-            if (country != null) {
-                playerCountries.put(player.getUniqueId(), country);
-                // Авто-назначение правителя как главы армии
-                if (getPosition(player) == MilitaryPosition.NONE) {
-                    setPosition(player, MilitaryPosition.ARMY_LEADER);
-                }
+            String c = getCountryViaReflection(player);
+            if (c != null) {
+                playerCountries.put(player.getUniqueId(), c);
+                if (getRole(player) == MilitaryRole.NONE) setRole(player, MilitaryRole.ARMY_COMMANDER);
             }
-            return country;
+            return c;
         }
 
-        String country = getCountryViaReflection(player);
-        if (country != null) {
-            playerCountries.put(player.getUniqueId(), country);
-        }
-        return country;
+        String c = getCountryViaReflection(player);
+        if (c != null) playerCountries.put(player.getUniqueId(), c);
+        return c;
     }
 
-    /**
-     * Получает страну через reflection к CountryisLeaderPerms.
-     */
     private String getCountryViaReflection(Player player) {
         try {
             Plugin clp = plugin.getServer().getPluginManager().getPlugin("CountryisLeaderPerms");
             if (clp == null) return null;
-
-            Object countryManager = clp.getClass().getMethod("getCountryManager").invoke(clp);
-            if (countryManager == null) return null;
-
-            Object profile = countryManager.getClass().getMethod("getProfile", UUID.class)
-                    .invoke(countryManager, player.getUniqueId());
+            Object cm = clp.getClass().getMethod("getCountryManager").invoke(clp);
+            if (cm == null) return null;
+            Object profile = cm.getClass().getMethod("getProfile", UUID.class).invoke(cm, player.getUniqueId());
             if (profile == null) return null;
-
             return (String) profile.getClass().getMethod("getCountryName").invoke(profile);
-        } catch (Exception e) {
-            return null;
-        }
+        } catch (Exception e) { return null; }
     }
 
-    /**
-     * Установить страну в кэш вручную.
-     */
     public void setCountry(Player player, String countryName) {
-        if (countryName == null) {
-            playerCountries.remove(player.getUniqueId());
-        } else {
-            playerCountries.put(player.getUniqueId(), countryName);
-        }
+        if (countryName == null) playerCountries.remove(player.getUniqueId());
+        else playerCountries.put(player.getUniqueId(), countryName);
     }
 
-    /**
-     * Проверяет, все ли игроки из одной страны.
-     */
     public boolean isSameCountry(Player a, Player b) {
-        String ca = getCountry(a);
-        String cb = getCountry(b);
-        if (ca == null || cb == null) return false;
-        return ca.equals(cb);
+        String ca = getCountry(a), cb = getCountry(b);
+        return ca != null && ca.equals(cb);
     }
 
-    // ─── ДОЛЖНОСТЬ ────────────────────────────────────────────────────────
+    public boolean isInArmy(Player player) { return getRole(player) != MilitaryRole.NONE; }
 
-    public void setPosition(Player player, MilitaryPosition position) {
-        playerPositions.put(player.getUniqueId(), position);
-        // Синхронизируем страну при назначении
+    // ===== ROLE (DOLZHNOST) =====
+    public boolean setRole(Player player, MilitaryRole role) {
+        MilitaryRank rank = getRank(player);
+        if (role != MilitaryRole.NONE && !role.canHaveWithRank(rank)) return false;
+        playerRoles.put(player.getUniqueId(), role);
         String country = getCountry(player);
-        if (country != null) {
-            playerCountries.put(player.getUniqueId(), country);
-        }
+        if (country != null) playerCountries.put(player.getUniqueId(), country);
         saveData();
         updatePlayer(player);
+        return true;
     }
 
-    public MilitaryPosition getPosition(Player player) {
-        // Правитель автоматически имеет высший ранг
+    public MilitaryRole getRole(Player player) {
         if (player.hasPermission("clp.leader")) {
-            MilitaryPosition current = playerPositions.get(player.getUniqueId());
-            if (current == null || current == MilitaryPosition.NONE) {
-                return MilitaryPosition.ARMY_LEADER;
-            }
-            return current;
+            MilitaryRole current = playerRoles.get(player.getUniqueId());
+            return (current == null || current == MilitaryRole.NONE) ? MilitaryRole.ARMY_COMMANDER : current;
         }
-        return playerPositions.getOrDefault(player.getUniqueId(), MilitaryPosition.NONE);
+        return playerRoles.getOrDefault(player.getUniqueId(), MilitaryRole.NONE);
     }
 
-    public boolean hasPosition(Player player, MilitaryPosition required) {
-        return getPosition(player).getLevel() >= required.getLevel();
+    public boolean hasRole(Player player, MilitaryRole required) {
+        return getRole(player).getLevel() >= required.getLevel();
     }
 
-    public boolean canGivePosition(Player giver, MilitaryPosition target) {
-        MilitaryPosition giverPos = getPosition(giver);
-
-        if (giverPos == MilitaryPosition.ARMY_LEADER) {
-            return target == MilitaryPosition.OFFICER || target == MilitaryPosition.SOLDIER;
-        }
-
-        if (giverPos == MilitaryPosition.OFFICER) {
-            return target == MilitaryPosition.SOLDIER;
-        }
-
+    public boolean canGiveRole(Player giver, MilitaryRole newRole) {
+        MilitaryRole giverRole = getRole(giver);
+        if (giver.hasPermission("clp.leader")) return true;
+        if (giverRole == MilitaryRole.NONE) return false;
+        if (giverRole == MilitaryRole.ARMY_COMMANDER) return true;
+        if (giverRole.isOfficer()) return !newRole.isOfficer();
         return false;
     }
 
-    public boolean canTakePosition(Player taker, MilitaryPosition target) {
-        return getPosition(taker).getLevel() > target.getLevel();
+    public boolean canTakeRole(Player taker, MilitaryRole targetRole) {
+        MilitaryRole takerRole = getRole(taker);
+        if (takerRole == MilitaryRole.NONE) return false;
+        if (taker.hasPermission("clp.leader")) return true;
+        return takerRole.getLevel() > targetRole.getLevel();
     }
 
+    // ===== RANK (ZVANIE) =====
     public MilitaryRank getRank(Player player) {
         Long startTime = serviceTime.get(player.getUniqueId());
         if (startTime == null) return MilitaryRank.PRIVATE;
-
-        long seconds = (System.currentTimeMillis() - startTime) / 1000;
-        return MilitaryRank.getByTime(seconds);
+        return MilitaryRank.getByTime((System.currentTimeMillis() - startTime) / 1000);
     }
 
     public long getServiceTime(Player player) {
-        Long startTime = serviceTime.get(player.getUniqueId());
-        if (startTime == null) return 0;
-        return (System.currentTimeMillis() - startTime) / 1000;
+        Long t = serviceTime.get(player.getUniqueId());
+        return t == null ? 0 : (System.currentTimeMillis() - t) / 1000;
     }
 
     public void addServiceTime(Player player, long seconds) {
         Long current = serviceTime.get(player.getUniqueId());
-        if (current == null) {
-            current = System.currentTimeMillis() - (seconds * 1000);
-        } else {
-            current -= (seconds * 1000);
-        }
-        serviceTime.put(player.getUniqueId(), current);
+        serviceTime.put(player.getUniqueId(), current == null
+            ? System.currentTimeMillis() - seconds * 1000 : current - seconds * 1000);
         saveData();
     }
 
-    // ─── ФИЛЬТРАЦИЯ ПО СТРАНЕ ─────────────────────────────────────────────
-
-    /**
-     * Все солдаты ВСЕХ стран.
-     */
+    // ===== FILTRACIYA PO STRANE =====
     public List<Player> getArmyMembers() {
         List<Player> members = new ArrayList<>();
-        for (Player player : plugin.getServer().getOnlinePlayers()) {
-            if (getPosition(player) != MilitaryPosition.NONE) {
-                members.add(player);
-            }
-        }
+        for (Player p : plugin.getServer().getOnlinePlayers())
+            if (getRole(p) != MilitaryRole.NONE) members.add(p);
         return members;
     }
 
-    /**
-     * Все солдаты ТОЛЬКО страны офицера/главы.
-     */
     public List<Player> getSubordinates(Player officer) {
         String officerCountry = getCountry(officer);
         if (officerCountry == null) return Collections.emptyList();
-
-        MilitaryPosition pos = getPosition(officer);
+        MilitaryRole oRole = getRole(officer);
         List<Player> subs = new ArrayList<>();
-
-        for (Player player : plugin.getServer().getOnlinePlayers()) {
-            if (player.equals(officer)) continue;
-
-            String playerCountry = getCountry(player);
-            if (!officerCountry.equals(playerCountry)) continue;
-
-            MilitaryPosition pPos = getPosition(player);
-
-            if (pos == MilitaryPosition.ARMY_LEADER && pPos.getLevel() < MilitaryPosition.ARMY_LEADER.getLevel()) {
-                subs.add(player);
-            } else if (pos == MilitaryPosition.OFFICER && pPos == MilitaryPosition.SOLDIER) {
-                subs.add(player);
-            }
+        for (Player p : plugin.getServer().getOnlinePlayers()) {
+            if (p.equals(officer)) continue;
+            String pc = getCountry(p);
+            if (!officerCountry.equals(pc)) continue;
+            if (oRole.getLevel() > getRole(p).getLevel()) subs.add(p);
         }
         return subs;
     }
 
-    // ─── ОТОБРАЖЕНИЕ ────────────────────────────────────────────────────────
-
+    // ===== TITLE =====
     public String getFullTitle(Player player) {
-        MilitaryPosition pos = getPosition(player);
+        MilitaryRole role = getRole(player);
         MilitaryRank rank = getRank(player);
-
-        if (pos == MilitaryPosition.NONE) {
-            return rank.getIcon() + " " + rank.getDisplay();
-        }
-
-        return pos.getIcon() + " " + rank.getIcon() + " " + rank.getDisplay();
+        if (role == MilitaryRole.NONE) return rank.getIcon() + " " + rank.getDisplay();
+        return role.getIcon() + " " + rank.getIcon() + " " + rank.getDisplay();
     }
 
     public String getDisplayName(Player player) {
-        MilitaryPosition pos = getPosition(player);
-        MilitaryRank rank = getRank(player);
-
-        if (pos == MilitaryPosition.NONE) {
-            return rank.getIcon() + " " + player.getName();
-        }
-
-        return pos.getIcon() + " " + player.getName();
+        MilitaryRole role = getRole(player);
+        if (role == MilitaryRole.NONE) return player.getName();
+        return role.getIcon() + " " + player.getName();
     }
 
-    // ─── СОХРАНЕНИЕ ────────────────────────────────────────────────────────
-
+    // ===== SOHRANENIE =====
     private void loadData() {
         var config = plugin.getConfig();
-
-        var positionsSection = config.getConfigurationSection("positions");
-        if (positionsSection != null) {
-            for (String uuidStr : positionsSection.getKeys(false)) {
-                try {
-                    UUID uuid = UUID.fromString(uuidStr);
-                    String posName = config.getString("positions." + uuidStr);
-                    MilitaryPosition pos = MilitaryPosition.valueOf(posName);
-                    playerPositions.put(uuid, pos);
-                } catch (Exception ignored) {}
-            }
-        }
-
-        var serviceSection = config.getConfigurationSection("service-time");
-        if (serviceSection != null) {
-            for (String uuidStr : serviceSection.getKeys(false)) {
-                try {
-                    UUID uuid = UUID.fromString(uuidStr);
-                    long startTime = config.getLong("service-time." + uuidStr);
-                    serviceTime.put(uuid, startTime);
-                } catch (Exception ignored) {}
-            }
-        }
+        var roles = config.getConfigurationSection("roles");
+        if (roles != null)
+            for (String uuid : roles.getKeys(false))
+                try { playerRoles.put(UUID.fromString(uuid), MilitaryRole.valueOf(config.getString("roles." + uuid))); } catch (Exception ignored) {}
+        var service = config.getConfigurationSection("service-time");
+        if (service != null)
+            for (String uuid : service.getKeys(false))
+                try { serviceTime.put(UUID.fromString(uuid), config.getLong("service-time." + uuid)); } catch (Exception ignored) {}
     }
 
     private void saveData() {
         var config = plugin.getConfig();
-
-        for (Map.Entry<UUID, MilitaryPosition> entry : playerPositions.entrySet()) {
-            config.set("positions." + entry.getKey().toString(), entry.getValue().name());
-        }
-
-        for (Map.Entry<UUID, Long> entry : serviceTime.entrySet()) {
-            config.set("service-time." + entry.getKey().toString(), entry.getValue());
-        }
-
+        for (Map.Entry<UUID, MilitaryRole> e : playerRoles.entrySet())
+            config.set("roles." + e.getKey(), e.getValue().name());
+        for (Map.Entry<UUID, Long> e : serviceTime.entrySet())
+            config.set("service-time." + e.getKey(), e.getValue());
         plugin.saveConfig();
     }
 
-    private void updatePlayer(Player player) {
-        player.setPlayerListName(getDisplayName(player));
-    }
+    private void updatePlayer(Player player) { player.setPlayerListName(getDisplayName(player)); }
 }

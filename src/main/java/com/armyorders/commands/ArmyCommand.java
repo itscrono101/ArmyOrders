@@ -1,6 +1,7 @@
 package com.armyorders.commands;
 
 import com.armyorders.ArmyOrders;
+import com.armyorders.data.PlayerData;
 import com.armyorders.gui.MainGUI;
 import com.armyorders.manager.OrderManager;
 import com.armyorders.manager.RankManager;
@@ -65,9 +66,9 @@ public class ArmyCommand implements CommandExecutor, TabCompleter {
     // ─── /mo help ─────────────────────────────────────────────────────────
     
     private void sendHelp(Player player) {
-        var position = plugin.getRankManager().getPosition(player);
-        boolean isArmyLeader = position == RankManager.MilitaryPosition.ARMY_LEADER;
-        boolean isOfficer = position == RankManager.MilitaryPosition.OFFICER;
+        var position = plugin.getRankManager().getRole(player);
+        boolean isArmyLeader = position == RankManager.MilitaryRole.ARMY_COMMANDER;
+        boolean isOfficer = position.isOfficer();
         
         player.sendMessage("");
         player.sendMessage(ChatColor.DARK_GRAY + "╔══════════════════════════════════════╗");
@@ -104,7 +105,7 @@ public class ArmyCommand implements CommandExecutor, TabCompleter {
     private void handlePosition(Player player, String[] args) {
         if (args.length < 2) {
             // Показать свою должность
-            var position = plugin.getRankManager().getPosition(player);
+            var position = plugin.getRankManager().getRole(player);
             var rank = plugin.getRankManager().getRank(player);
             long serviceTime = plugin.getRankManager().getServiceTime(player);
             
@@ -120,7 +121,7 @@ public class ArmyCommand implements CommandExecutor, TabCompleter {
                 return;
             }
             
-            var targetPos = plugin.getRankManager().getPosition(target);
+            var targetPos = plugin.getRankManager().getRole(target);
             var targetRank = plugin.getRankManager().getRank(target);
             
             player.sendMessage(ChatColor.GOLD + "═══ " + target.getName() + " ═══");
@@ -151,12 +152,12 @@ public class ArmyCommand implements CommandExecutor, TabCompleter {
         }
 
         String posStr = args[2].toLowerCase();
-        RankManager.MilitaryPosition newPos;
+        RankManager.MilitaryRole newPos;
 
         switch (posStr) {
-            case "officer" -> newPos = RankManager.MilitaryPosition.OFFICER;
-            case "soldier" -> newPos = RankManager.MilitaryPosition.SOLDIER;
-            case "army" -> newPos = RankManager.MilitaryPosition.ARMY_LEADER;
+            case "officer" -> newPos = RankManager.MilitaryRole.PLATOON_LEADER;
+            case "soldier" -> newPos = RankManager.MilitaryRole.PRIVATE_INFANTRY;
+            case "army" -> newPos = RankManager.MilitaryRole.ARMY_COMMANDER;
             default -> {
                 player.sendMessage(ChatColor.RED + "Неверная должность! officer, soldier, army");
                 return;
@@ -164,13 +165,13 @@ public class ArmyCommand implements CommandExecutor, TabCompleter {
         }
 
         // Проверяем права
-        if (!plugin.getRankManager().canGivePosition(player, newPos)) {
+        if (!plugin.getRankManager().canGiveRole(player, newPos)) {
             player.sendMessage(ChatColor.RED + "Вы не можете назначить эту должность!");
             return;
         }
 
         // Назначаем
-        plugin.getRankManager().setPosition(target, newPos);
+        plugin.getRankManager().setRole(target, newPos);
 
         player.sendMessage(ChatColor.GREEN + "✓ " + ChatColor.WHITE + "Вы назначили "
                 + ChatColor.YELLOW + target.getName() + ChatColor.WHITE + " на должность "
@@ -200,19 +201,19 @@ public class ArmyCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        var targetPos = plugin.getRankManager().getPosition(target);
+        var targetPos = plugin.getRankManager().getRole(target);
 
-        if (targetPos == RankManager.MilitaryPosition.NONE) {
+        if (targetPos == RankManager.MilitaryRole.NONE) {
             player.sendMessage(ChatColor.RED + "Этот игрок не имеет должности!");
             return;
         }
 
-        if (!plugin.getRankManager().canTakePosition(player, targetPos)) {
+        if (!plugin.getRankManager().canTakeRole(player, targetPos)) {
             player.sendMessage(ChatColor.RED + "Вы не можете снять этого игрока!");
             return;
         }
 
-        plugin.getRankManager().setPosition(target, RankManager.MilitaryPosition.NONE);
+        plugin.getRankManager().setRole(target, RankManager.MilitaryRole.NONE);
 
         player.sendMessage(ChatColor.YELLOW + "Вы сняли " + target.getName() + " с должности!");
         target.sendMessage(ChatColor.RED + "Вас сняли с должности!");
@@ -231,7 +232,7 @@ public class ArmyCommand implements CommandExecutor, TabCompleter {
         }
         
         var stats = plugin.getOrderManager().getStats(target);
-        var position = plugin.getRankManager().getPosition(target);
+        var position = plugin.getRankManager().getRole(target);
         var rank = plugin.getRankManager().getRank(target);
         
         player.sendMessage(ChatColor.GOLD + "═══ СТАТИСТИКА: " + ChatColor.WHITE + target.getName() + " ═══");
@@ -266,14 +267,14 @@ public class ArmyCommand implements CommandExecutor, TabCompleter {
             List<String> subs = Arrays.asList("help", "stats", "position");
             
             Player player = (Player) sender;
-            var pos = plugin.getRankManager().getPosition(player);
+            var pos = plugin.getRankManager().getRole(player);
             
-            if (pos.getLevel() >= RankManager.MilitaryPosition.OFFICER.getLevel()) {
+            if (pos.isOfficer()) {
                 subs = new ArrayList<>(subs);
                 subs.add("give");
             }
             
-            if (pos == RankManager.MilitaryPosition.ARMY_LEADER) {
+            if (pos == RankManager.MilitaryRole.ARMY_COMMANDER) {
                 subs.add("take");
             }
             
@@ -289,11 +290,15 @@ public class ArmyCommand implements CommandExecutor, TabCompleter {
     
     // ─── ВСПОМОГАТЕЛЬНЫЕ ─────────────────────────────────────────────────
     
-    private ChatColor getPositionColor(RankManager.MilitaryPosition pos) {
+    private ChatColor getPositionColor(RankManager.MilitaryRole pos) {
         return switch (pos) {
-            case ARMY_LEADER -> ChatColor.GOLD;
-            case OFFICER -> ChatColor.RED;
-            case SOLDIER -> ChatColor.YELLOW;
+            case ARMY_COMMANDER -> ChatColor.GOLD;
+            case PLATOON_LEADER -> ChatColor.RED;
+            case STAFF_OFFICER -> ChatColor.RED;
+            case PRIVATE_INFANTRY -> ChatColor.YELLOW;
+            case PRIVATE_MEDIC -> ChatColor.YELLOW;
+            case PRIVATE_ENGINEER -> ChatColor.YELLOW;
+            case PRIVATE_SCOUT -> ChatColor.YELLOW;
             default -> ChatColor.GRAY;
         };
     }

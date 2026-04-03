@@ -29,6 +29,14 @@ public class ArmyOrders extends JavaPlugin {
         orderManager = new OrderManager(this);
         mainGUI = new MainGUI(this);
         
+        // Загружаем контракты
+        playerData.loadAll();
+        
+        // Запускаем проверку контрактов (каждую минуту)
+        getServer().getScheduler().runTaskTimer(this, () -> {
+            playerData.checkExpiredContracts();
+        }, 1200L, 1200L); // 60 секунд
+        
         // Регистрация команды
         ArmyCommand armyCommand = new ArmyCommand(this);
         getCommand("mo").setExecutor(armyCommand);
@@ -47,9 +55,6 @@ public class ArmyOrders extends JavaPlugin {
     public void onDisable() {
         if (orderManager != null) {
             orderManager.stopTasks();
-        }
-        if (playerData != null) {
-            playerData.save();
         }
     }
     

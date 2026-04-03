@@ -64,9 +64,9 @@ public class MainGUI implements Listener {
         fillBorder(inv);
         
         // Проверяем должность
-        var position = rankManager.getPosition(player);
+        var position = rankManager.getRole(player);
         
-        if (position == RankManager.MilitaryPosition.NONE) {
+        if (position == RankManager.MilitaryRole.NONE) {
             // Нет должности - показываем информацию
             inv.setItem(13, makeItem(Material.BOOK,
                     "§e§l🏅 ВАШЕ ЗВАНИЕ",
@@ -102,7 +102,7 @@ public class MainGUI implements Listener {
         ));
         
         // ДАТЬ ПРИКАЗ (только для ОФИЦЕРА и выше)
-        if (position.getLevel() >= RankManager.MilitaryPosition.OFFICER.getLevel()) {
+        if (position.getLevel() >= 2) {
             inv.setItem(20, makeItem(Material.COMPASS,
                     "§a§l🎯 ДАТЬ ПРИКАЗ",
                     "§7Выбрать солдата и выдать приказ"
@@ -159,7 +159,7 @@ public class MainGUI implements Listener {
                 while (slot % 9 == 0 || slot % 9 == 8) slot++;
                 if (slot > 43) break;
                 
-                var subPos = plugin.getRankManager().getPosition(sub);
+                var subPos = plugin.getRankManager().getRole(sub);
                 var subRank = plugin.getRankManager().getRank(sub);
                 boolean hasOrder = plugin.getOrderManager().hasOrder(sub);
                 

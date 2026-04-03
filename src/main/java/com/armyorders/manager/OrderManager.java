@@ -141,10 +141,16 @@ public class OrderManager {
     // ─── ВЫДАЧА ПРИКАЗОВ ───────────────────────────────────────────────────
     
     public boolean giveOrder(Player issuer, Player target, OrderType type, int durationSeconds) {
+        // Проверяем страну — можно приказывать только своим
+        if (!plugin.getRankManager().isSameCountry(issuer, target)) {
+            issuer.sendMessage(ChatColor.RED + "✗ Нельзя отдавать приказы игрокам из других стран!");
+            return false;
+        }
+
         // Проверяем что цель не в списке выше по должности
         var issuerPos = plugin.getRankManager().getPosition(issuer);
         var targetPos = plugin.getRankManager().getPosition(target);
-        
+
         if (issuerPos.getLevel() <= targetPos.getLevel()) {
             return false;
         }

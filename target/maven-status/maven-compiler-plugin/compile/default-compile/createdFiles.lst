@@ -1,0 +1,14 @@
+com\armyorders\commands\ArmyCommand$1.class
+com\armyorders\manager\OrderManager$ActiveOrder.class
+com\armyorders\manager\OrderManager.class
+com\armyorders\data\PlayerData.class
+com\armyorders\manager\OrderManager$OrderType.class
+com\armyorders\commands\ArmyCommand.class
+com\armyorders\manager\OrderManager$OrderResult.class
+com\armyorders\manager\RankManager.class
+com\armyorders\manager\RankManager$MilitaryRank.class
+com\armyorders\ArmyOrders.class
+com\armyorders\gui\MainGUI$GiveOrderData.class
+com\armyorders\manager\OrderManager$PlayerStats.class
+com\armyorders\manager\RankManager$MilitaryPosition.class
+com\armyorders\gui\MainGUI.class

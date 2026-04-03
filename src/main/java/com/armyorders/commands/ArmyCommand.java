@@ -137,16 +137,22 @@ public class ArmyCommand implements CommandExecutor, TabCompleter {
             player.sendMessage(ChatColor.RED + "Использование: /mo give <игрок> <officer|soldier>");
             return;
         }
-        
+
         Player target = Bukkit.getPlayer(args[1]);
         if (target == null) {
             player.sendMessage(ChatColor.RED + "Игрок не найден!");
             return;
         }
-        
+
+        // Проверяем страну — можно назначать только из своей страны
+        if (!plugin.getRankManager().isSameCountry(player, target)) {
+            player.sendMessage(ChatColor.RED + "✗ Можно назначать только граждан своей страны!");
+            return;
+        }
+
         String posStr = args[2].toLowerCase();
         RankManager.MilitaryPosition newPos;
-        
+
         switch (posStr) {
             case "officer" -> newPos = RankManager.MilitaryPosition.OFFICER;
             case "soldier" -> newPos = RankManager.MilitaryPosition.SOLDIER;
@@ -156,20 +162,20 @@ public class ArmyCommand implements CommandExecutor, TabCompleter {
                 return;
             }
         }
-        
+
         // Проверяем права
         if (!plugin.getRankManager().canGivePosition(player, newPos)) {
             player.sendMessage(ChatColor.RED + "Вы не можете назначить эту должность!");
             return;
         }
-        
+
         // Назначаем
         plugin.getRankManager().setPosition(target, newPos);
-        
-        player.sendMessage(ChatColor.GREEN + "✓ " + ChatColor.WHITE + "Вы назначили " 
-                + ChatColor.YELLOW + target.getName() + ChatColor.WHITE + " на должность " 
+
+        player.sendMessage(ChatColor.GREEN + "✓ " + ChatColor.WHITE + "Вы назначили "
+                + ChatColor.YELLOW + target.getName() + ChatColor.WHITE + " на должность "
                 + ChatColor.YELLOW + newPos.getIcon() + " " + newPos.getDisplay());
-        
+
         target.sendMessage(ChatColor.GOLD + "🎖 ВНИМАНИЕ! " + ChatColor.WHITE + "Вам присвоена должность!");
         target.sendMessage(ChatColor.YELLOW + newPos.getIcon() + " " + newPos.getDisplay());
     }
@@ -181,27 +187,33 @@ public class ArmyCommand implements CommandExecutor, TabCompleter {
             player.sendMessage(ChatColor.RED + "Использование: /mo take <игрок>");
             return;
         }
-        
+
         Player target = Bukkit.getPlayer(args[1]);
         if (target == null) {
             player.sendMessage(ChatColor.RED + "Игрок не найден!");
             return;
         }
-        
+
+        // Проверяем страну
+        if (!plugin.getRankManager().isSameCountry(player, target)) {
+            player.sendMessage(ChatColor.RED + "✗ Можно снимать только граждан своей страны!");
+            return;
+        }
+
         var targetPos = plugin.getRankManager().getPosition(target);
-        
+
         if (targetPos == RankManager.MilitaryPosition.NONE) {
             player.sendMessage(ChatColor.RED + "Этот игрок не имеет должности!");
             return;
         }
-        
+
         if (!plugin.getRankManager().canTakePosition(player, targetPos)) {
             player.sendMessage(ChatColor.RED + "Вы не можете снять этого игрока!");
             return;
         }
-        
+
         plugin.getRankManager().setPosition(target, RankManager.MilitaryPosition.NONE);
-        
+
         player.sendMessage(ChatColor.YELLOW + "Вы сняли " + target.getName() + " с должности!");
         target.sendMessage(ChatColor.RED + "Вас сняли с должности!");
     }
